@@ -45,7 +45,8 @@
    // PC
    $pc[31:0] = >>1$next_pc[31:0];
    $next_pc[31:0] = $reset ? 0 :
-                    $taken_br ? $br_tgt_pc[31:0] :
+                    $taken_br || $is_jal ? $br_tgt_pc[31:0] :
+                    $is_jalr ? $jalr_tgt_pc[31:0] :
                     ($pc[31:0] + 4) ;
    
    // Instruction Memory
@@ -115,8 +116,8 @@
    
    // Arithmetic Logic Unit
    
-   $sltu_rslt = {31'b0, $src1_value < $src2_value};
-   $sltiu_rslt = {31'b0, $src1_value < $imm};
+   $sltu_rslt[31:0] = {31'b0, $src1_value < $src2_value};
+   $sltiu_rslt[31:0] = {31'b0, $src1_value < $imm};
    
    $sext_src1[63:0] = {{32{$src1_value[31]}}, $src1_value};
    $sra_rslt[63:0] = $sext_src1 >> $src2_value[4:0];
@@ -142,11 +143,11 @@
              $is_sra ? $sra_rslt[31:0] :
              $is_or ? $src1_value | $src2_value:
              $is_and ? $src1_value & $src2_value:
-             $is_lui ? {$imm[31:12], 10'b0}:
+             $is_lui ? {$imm[31:12], 12'b0}:
              $is_auipc ? $pc + ($imm << 12):
              $is_jal ? $pc + 32'd4:
              $is_jalr ? $pc + 32'd4:
-             
+             $is_load || $is_s_instr ? $src1_value[31:0] + $imm[31:0] :
              32'b0 ;
    
    // Branch Logic
@@ -157,14 +158,17 @@
                $is_bltu ? ($src1_value < $src2_value) :
                $is_bgeu ? ($src1_value <= $src2_value) : 1'b0;
    $br_tgt_pc[31:0] = $pc[31:0] + $imm[31:0];
+   $jalr_tgt_pc[31:0] = $src1_value[31:0] + $imm[31:0];
    
+   // Data Memory Access
+   $ld_data[31:0] = $is_load ? $rd_data : $result;
    
    // Assert these to end simulation (before Makerchip cycle limit).
    m4+tb()
    *failed = *cyc_cnt > M4_MAX_CYC;
    
-   m4+rf(32, 32, $reset, $rd_valid, $rd[4:0], $result[31:0], $rs1_valid, $rs1[4:0], $src1_value, $rs2_valid, $rs2[4:0], $src2_value)
-   //m4+dmem(32, 32, $reset, $addr[4:0], $wr_en, $wr_data[31:0], $rd_en, $rd_data)
+   m4+rf(32, 32, $reset, $rd_valid, $rd[4:0], $ld_data[31:0], $rs1_valid, $rs1[4:0], $src1_value, $rs2_valid, $rs2[4:0], $src2_value)
+   m4+dmem(32, 32, $reset, $result[4:0], $is_s_instr, $src2_value[31:0], $rd_en, $rd_data)
    m4+cpu_viz()
 \SV
    endmodule
